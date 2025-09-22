@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\CurrencyDenomination;
 use App\Enums\Symbol;
 use Illuminate\Database\Eloquent\Model;
+use InvalidArgumentException;
 
 class VendingMachine extends Model
 {
@@ -12,14 +13,61 @@ class VendingMachine extends Model
     private Display $display;
     private array $drinks = [];
 
-    public function __construct(private array $currency = [], array $drinks = [])
+    public function __construct(private readonly array $currency = [], array $drinks = [])
     {
+        // validate input params and throw exceptions when validation fails
+        $this->validateCurrency($this->currency);
+        $this->validateDrinks($drinks);
+
         parent::__construct();
+
         $this->display = new Display();
         $this->initializeCurrency();
         $this->initializeDrinks($drinks);
         $this->initializeCoins();
     }
+
+
+    //region Validation
+    private function validateCurrency(array $currency): void
+    {
+        if (empty($currency)) {
+            return;
+        }
+
+        $allowedKeys = ['sign', 'space', 'position'];
+        foreach ($currency as $key => $value) {
+            if (!in_array($key, $allowedKeys, true)) {
+                throw new InvalidArgumentException("Invalid currency parameter: '$key' is not supported.");
+            }
+        }
+
+        if (isset($currency['sign']) && !Symbol::isValid($currency['sign'])) {
+            throw new InvalidArgumentException("Invalid currency sign provided.");
+        }
+
+        if (isset($currency['space']) && !is_string($currency['space'])) {
+            throw new InvalidArgumentException("Currency 'space' must be a string.");
+        }
+
+        if (isset($currency['position']) && !in_array($currency['position'], [Currency::CURRENCY_POSITION_BEFORE, Currency::CURRENCY_POSITION_AFTER], true)) {
+            throw new InvalidArgumentException("Currency 'position' must be either '" . Currency::CURRENCY_POSITION_BEFORE . "' or '" . Currency::CURRENCY_POSITION_AFTER . "'.");
+        }
+    }
+
+    private function validateDrinks(array $drinks): void
+    {
+        foreach ($drinks as $name => $price) {
+            if (!is_string($name) || trim($name) === '') {
+                throw new InvalidArgumentException('Drink names must be non-empty strings.');
+            }
+
+            if (!is_numeric($price) || $price < 0) {
+                throw new InvalidArgumentException("Invalid price for drink '$name'. Must be a non-negative number.");
+            }
+        }
+    }
+    //endregion Validation
 
     //region Private Initializers
     private function initializeCurrency(): void
@@ -132,7 +180,6 @@ class VendingMachine extends Model
         return $this;
     }
     //endregion Required Methods
-
 
     //region Helper methods
     private function isValidCoin(float $coin): bool
